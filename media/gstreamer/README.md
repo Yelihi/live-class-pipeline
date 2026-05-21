@@ -93,16 +93,42 @@ React에서 컴포넌트를 조합해 UI를 만드는 것과 같은 구조다.
 
 ## 파이프라인 스크립트 파일명 컨벤션
 
-`pipelines/` 안의 파일은 `t{번호}_{설명}.sh` 형식으로 저장한다.
+`pipelines/` 안의 파일은 `{번호}-{설명}.sh` 형식으로 저장한다.
 
 ```
 pipelines/
-  t02_basic_pipeline.sh       # T-02: 기본 파이프라인
-  t03_encode_h264.sh          # T-03: H.264 인코딩
-  t04_tee_leaky_queue.sh      # T-04: tee + leaky queue 실험
-  t05_record_mkv.sh           # T-05: MKV 녹화
-  t06_hls_output.sh           # T-06: HLS 출력
+  01-single-branch.sh         # T-02: 파일 입력 → fakesink (단일 브랜치)
+  02-encode-h264.sh           # T-03: H.264 인코딩
+  03-tee-leaky-queue.sh       # T-04: tee + leaky queue 실험
+  04-record-mkv.sh            # T-05: MKV 녹화
+  05-hls-output.sh            # T-06: HLS 출력
 ```
+
+---
+
+## 파이프라인 실행 방법
+
+모든 스크립트는 **프로젝트 루트에서** 실행한다.
+
+### T-02: 단일 브랜치 파이프라인
+
+```bash
+# 기본 실행 (sample.mp4 없으면 자동 생성)
+bash media/gstreamer/pipelines/01-single-branch.sh
+
+# 다른 파일 지정
+bash media/gstreamer/pipelines/01-single-branch.sh /path/to/video.mp4
+```
+
+**파이프라인 구조**:
+```
+[filesrc] → [decodebin] → [videoconvert] → [fakesink]
+  파일 읽기    자동 디코딩    색상 변환       출력 버림(서버용)
+```
+
+- `-v` 옵션으로 각 pad의 caps(해상도·포맷·FPS) 협상 과정이 출력됨
+- GUI 환경에서 화면 출력이 필요하면 스크립트 내 `autovideosink` 주석 해제
+- `Ctrl+C`로 종료
 
 ---
 
