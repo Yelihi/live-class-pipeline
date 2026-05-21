@@ -27,6 +27,10 @@ GStreamer + MediaMTX 기반 실시간 라이브 강의 파이프라인 실험 �
 - 설계 방향이 두 가지 이상으로 갈릴 때
 - 라이브러리·도구 선택이 필요할 때
 
+## 커밋 규칙
+
+- 커밋 메시지에 `Co-Authored-By` 줄을 포함하지 않는다.
+
 ## 기술 주의사항
 
 - GStreamer Python 바인딩은 `pip install` 불가 → `python3-gst-1.0` 시스템 패키지 필수
