@@ -130,6 +130,28 @@ bash media/gstreamer/pipelines/01-single-branch.sh /path/to/video.mp4
 - GUI 환경에서 화면 출력이 필요하면 스크립트 내 `autovideosink` 주석 해제
 - `Ctrl+C`로 종료
 
+### T-03: tee 기반 4분기 파이프라인
+
+```bash
+# 기본 실행 (sample.mp4 없으면 자동 생성)
+bash media/gstreamer/pipelines/02-four-branch.sh
+
+# 다른 파일 지정
+bash media/gstreamer/pipelines/02-four-branch.sh /path/to/video.mp4
+```
+
+**파이프라인 구조**:
+```
+                           ┌─ live_queue    → live_sink    (화면 출력용)
+[filesrc] → [decodebin] → [videoconvert] → [tee] ┼─ record_queue → record_sink (파일 저장용)
+                                                  ├─ ai_queue     → ai_sink     (AI 분석용)
+                                                  └─ preview_queue → preview_sink (운영자 preview)
+```
+
+- 각 branch에 `queue`를 반드시 붙여야 tee가 동기화 없이 각 branch를 독립적으로 실행함
+- `name=live_sink` 등으로 이름을 붙이면 나중에 Python에서 `pipeline.get_by_name("live_sink")`로 조회 가능
+- 실행 로그에서 `live_sink`, `record_sink`, `ai_sink`, `preview_sink`가 모두 출력되면 4분기 성공
+
 ---
 
 ## Python GI 바인딩 확인 (T-07 준비)
