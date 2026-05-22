@@ -6,6 +6,7 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst  # noqa: E402
 
+from .event_bus import bus as event_bus
 from .metrics_collector import collector as metrics
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ def start_pipeline(input_path: str) -> dict:
             metrics.attach_probe(_pipeline, branch, element_name)
 
         _pipeline.set_state(Gst.State.PLAYING)
+    event_bus.publish({"type": "pipeline", "state": "started", "input": input_path})
     return {"state": "started"}
 
 
@@ -85,6 +87,7 @@ def stop_pipeline() -> dict:
         if _pipeline is not None:
             _pipeline.set_state(Gst.State.NULL)
             _pipeline = None
+    event_bus.publish({"type": "pipeline", "state": "stopped"})
     return {"state": "stopped"}
 
 
