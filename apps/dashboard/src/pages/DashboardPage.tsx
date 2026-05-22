@@ -1,37 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { useAIResults } from "../features/metrics-subscribe/useAIResults";
 import { useFpsHistory } from "../features/metrics-subscribe/useFpsHistory";
 import { usePipelineEvents } from "../features/metrics-subscribe/usePipelineEvents";
-import type { AIResult } from "../shared/types/pipeline";
 import { AIResultPanel } from "../widgets/AIResultPanel";
 import { BranchStatusCard } from "../widgets/BranchStatusCard";
 import { FpsChart } from "../widgets/FpsChart";
-import { HlsPlayer } from "../widgets/HlsPlayer";
 import { PipelineControlCard } from "../widgets/PipelineControlCard";
+import { WhepPlayer } from "../widgets/WhepPlayer";
 
 const BRANCHES = ["live", "record", "ai", "preview"] as const;
-const HLS_URL = `${import.meta.env.VITE_API_URL ?? "http://localhost:8000"}/hls/stream.m3u8`;
+const WHEP_URL = `${import.meta.env.VITE_MEDIAMTX_URL ?? "http://localhost:8889"}/room1/whep`;
 
 export function DashboardPage() {
   const { metrics, connected, eventSource } = usePipelineEvents();
   const fpsHistory = useFpsHistory(metrics);
-  const { latestResult, getResultAtTime } = useAIResults(eventSource);
-  const [syncedResult, setSyncedResult] = useState<AIResult | null>(null);
-
-  // latestResult를 ref로 추적해 handleTimeSync deps에서 제거
-  const latestResultRef = useRef<AIResult | null>(null);
-  useEffect(() => {
-    latestResultRef.current = latestResult;
-  }, [latestResult]);
-
-  // getResultAtTime이 stable하므로 handleTimeSync도 안정적 참조 유지
-  const handleTimeSync = useCallback(
-    (wallClockMs: number) => {
-      const found = getResultAtTime(wallClockMs);
-      setSyncedResult(found ?? latestResultRef.current);
-    },
-    [getResultAtTime]
-  );
+  const { latestResult } = useAIResults(eventSource);
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
@@ -66,8 +48,8 @@ export function DashboardPage() {
         <FpsChart data={fpsHistory} />
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <HlsPlayer src={HLS_URL} onTimeSync={handleTimeSync} />
-          <AIResultPanel result={syncedResult ?? latestResult} />
+          <WhepPlayer src={WHEP_URL} />
+          <AIResultPanel result={latestResult} />
         </div>
       </div>
     </div>
