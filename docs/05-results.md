@@ -74,3 +74,34 @@
 1. `hlssink2`에 `program-date-time=true` 옵션 추가 → HLS-AI 동기화 정확도 향상
 2. `rtspsrc`에 `retry-delay` 설정 → 송출 중단 시 자동 재연결
 3. AI branch `leaky=downstream` + `drop=true` 이미 적용 → 처리 지연이 파이프라인에 영향 없음
+
+---
+
+## 프로젝트 회고
+
+### 예상과 달랐던 것
+
+- **GStreamer tee 백프레셔**: `leaky` 없이 AI branch를 연결하자마자 live branch가 즉시 멈췄다.
+  `leaky=downstream`으로 해결했고, AI가 느려도 다른 branch에 전혀 영향이 없음을 확인했다.
+
+- **MediaPipe LIVE_STREAM 타임스탬프 요구사항**: 타임스탬프가 단조 증가하지 않으면 `detect_async`가 프레임을 무시한다.
+  `buf.pts == GST_CLOCK_TIME_NONE`인 프레임을 건너뛰는 방어 코드가 필요했다.
+
+- **Python GI 바인딩 pip 불가**: `pip install gst-python`이 없다. `apt-get install python3-gst-1.0`이 필수이며,
+  venv는 반드시 `--system-site-packages`로 생성해야 한다.
+
+- **EAR 정규화 좌표계**: 픽셀 기반 EAR(0.25~0.35)과 달리, MediaPipe 정규화 좌표(0.0~1.0)로 계산한 EAR은
+  0.15~0.20 범위다. 임계값을 데이터에 맞게 재조정해야 한다.
+
+### 잘 된 것
+
+- **4분기 파이프라인 설계**: live/record/ai/preview를 독립적으로 격리해 각 branch의 policy를 달리 적용한 구조가 실제로 잘 동작했다.
+- **SSE EventBus**: GLib 스레드 ↔ asyncio 간 `run_coroutine_threadsafe` 패턴이 안정적으로 동작했다.
+- **hls.js FRAG_CHANGED 동기화**: `wall_clock_ms` 기반 ±500ms 창 매핑 아이디어가 간단하면서 효과적이었다.
+
+### 다음 시도해볼 것
+
+1. `webrtcsink`(WHEP)로 live branch 지연을 < 1초로 낮추기
+2. Prometheus + Grafana로 장기 메트릭 시각화
+3. TURN 서버 추가로 NAT 환경에서도 WHIP 송출 보장
+4. MediaPipe LIVE_STREAM → batch 처리로 throughput 향상 실험

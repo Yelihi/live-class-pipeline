@@ -1,130 +1,143 @@
 # Live Class Pipeline Lab
 
-GStreamer 기반 강의 스트림 분기 파이프라인 실험 프로젝트.
+> GStreamer 기반 실시간 강의 스트림 분기 파이프라인 — 기술 실증 프로젝트
 
-브라우저에서 수신한 WebRTC 스트림을 실시간으로 분기하여 HLS 송출 · 녹화 · AI 집중도 분석을 동시에 처리하는 파이프라인을 직접 구축하고 검증한다.
-
-> 관련 이슈: [메인 실험 이슈 #1](https://github.com/Yelihi/live-class-pipeline/issues/1) · [태스크 로드맵 #2](https://github.com/Yelihi/live-class-pipeline/issues/2)
+브라우저에서 수신한 WebRTC 스트림을 실시간으로 4개 branch로 분기하여 HLS 송출 · 녹화 · AI 집중도 분석을 동시에 처리하는 파이프라인을 직접 구축하고 검증합니다.
 
 ---
 
-## 전체 아키텍처
+## 아키텍처
 
-```
-[브라우저 강사]
-     │ WebRTC (WHIP)
-     ▼
-┌─────────────────┐
-│    MediaMTX     │  포트 8889 (WHIP 수신)
-│                 │  포트 8554 (RTSP 내부 노출)
-└────────┬────────┘
-         │ RTSP pull
-         ▼
-┌─────────────────────────────────────────────────┐
-│              GStreamer 파이프라인                 │
-│                                                  │
-│  rtspsrc → decodebin → videoconvert → tee ──────┤
-│                                         │        │
-│                          ┌──────────────┼──────────────────┐
-│                          │              │                   │
-│                    [live branch]  [record branch]    [ai branch]
-│                    leaky queue    non-leaky queue    leaky queue
-│                          │              │                   │
-│                    x264enc         matroskamux         appsink
-│                    hlssink2        filesink (MKV)          │
-│                          │                            Python GI
-└──────────────────────────┼────────────────────────────────┘
-                           │                            │
-                    [HLS 세그먼트]              [MediaPipe FaceLandmarker]
-                           │                            │ 집중도 분석
-                    ┌──────┴──────┐              [FastAPI SSE 이벤트]
-                    │   nginx     │                     │
-                    │  /hls/*     │              ┌──────┴──────┐
-                    └──────┬──────┘              │  대시보드   │
-                           │ HLS                 │  (React)    │
-                    [브라우저 시청자]             └─────────────┘
-                    hls.js 플레이어
-```
+```mermaid
+graph TD
+    subgraph Browser["브라우저"]
+        CAM[카메라]
+        PUB[Publisher Page<br/>WHIP 송출]
+        DASH[Operator Dashboard<br/>React + hls.js]
+    end
 
-**시간 동기화 전략**: AI 분석 결과(`wall_clock_ms`)와 HLS 재생 위치(`programDateTime`)를 ±500ms 윈도우로 매핑하여 스트림 지연과 무관하게 정확한 집중도 오버레이를 표시한다.
+    subgraph Ingest["Media Ingest"]
+        MTX[MediaMTX<br/>WHIP → RTSP 변환]
+    end
+
+    subgraph GST["GStreamer Pipeline"]
+        SRC[rtspsrc]
+        TEE[tee 4분기]
+        LB[Live Branch<br/>HLS hlssink2]
+        RB[Record Branch<br/>MKV matroskamux]
+        AB[AI Branch<br/>320×240 5fps BGR appsink]
+        PB[Preview Branch<br/>320×240 5fps fakesink]
+    end
+
+    subgraph AILayer["AI Worker"]
+        MP[MediaPipe FaceLandmarker]
+        AT[EAR 계산 + Attention Score]
+    end
+
+    subgraph API["FastAPI Control API"]
+        CTRL[Pipeline start/stop]
+        METRICS[Pad Probe 메트릭]
+        SSE[SSE EventBus]
+    end
+
+    CAM -->|getUserMedia| PUB
+    PUB -->|WHIP POST| MTX
+    MTX -->|RTSP pull| SRC
+    SRC --> TEE
+    TEE --> LB & RB & AB & PB
+    LB -->|stream.m3u8| DASH
+    AB --> MP --> AT -->|ai_result event| SSE
+    METRICS -->|metrics event 1fps| SSE
+    SSE -->|EventSource| DASH
+    CTRL -.->|제어| GST
+```
 
 ---
 
-## 디렉토리 구조
+## 핵심 검증 내용
 
-```
-live-class-pipeline-lab/
-├── apps/
-│   ├── dashboard/        # Phase 3 — React + hls.js 대시보드
-│   └── control-api/      # Phase 2 — FastAPI 파이프라인 제어 서버
-├── media/
-│   ├── gstreamer/
-│   │   ├── pipelines/    # Phase 1 — gst-launch-1.0 실험 스크립트 (.sh)
-│   │   └── python/       # Phase 2 — Python GI 바인딩 파이프라인 제어
-│   └── mediamtx/         # Phase 4 — MediaMTX mediamtx.yml 설정
-├── infra/
-│   ├── docker/           # Phase 5 — 각 서비스 Dockerfile
-│   ├── compose/          # Phase 5 — docker-compose 파일
-│   └── proxy/            # Phase 5 — Caddy 리버스 프록시 설정
-├── docs/                 # 실험 계획 및 결과 문서
-├── scripts/
-│   └── dev-setup.sh      # T-01에서 GStreamer apt 설치 내용 채움
-├── .gitignore
-└── README.md
-```
-
-### 파이프라인 스크립트 파일명 컨벤션
-
-`media/gstreamer/pipelines/` 안의 파일은 `t{번호}_{설명}.sh` 형식으로 저장한다.
-
-예: `t01_install_verify.sh`, `t02_basic_pipeline.sh`, `t04_tee_leaky_queue.sh`
+1. **GStreamer tee** — 단일 입력을 4개 branch로 무손실 분기
+2. **백프레셔 격리** — AI branch `leaky=downstream`으로 느린 처리가 live branch에 영향 없음
+3. **MediaPipe LIVE_STREAM** — 5fps 실시간 얼굴 랜드마크 추출 + EAR 기반 집중도 산출
+4. **HLS-AI 동기화** — `wall_clock_ms` + hls.js `FRAG_CHANGED`로 재생 시간 ±500ms 매핑
+5. **전체 스택 Docker화** — GStreamer + FastAPI + React + MediaMTX + Caddy TLS
 
 ---
 
-## Phase별 진행 현황
+## 실험 결과 요약
 
-| Phase | 내용 | 상태 |
-|-------|------|------|
-| Phase 0 | 프로젝트 초기화 (T-00) | 🟡 진행 중 |
-| Phase 1 | GStreamer 파이프라인 실험 (T-01~T-08) | ⬜ 대기 |
-| Phase 2 | FastAPI 제어 서버 + SSE (T-09~T-13) | ⬜ 대기 |
-| Phase 3 | React 대시보드 (T-14~T-16) | ⬜ 대기 |
-| Phase 4 | MediaPipe AI 집중도 분석 (T-17~T-22) | ⬜ 대기 |
-| Phase 5 | Docker 컨테이너화 (T-23~T-28) | ⬜ 대기 |
-| Phase 6 | 서버 배포 + E2E 검증 (T-29~T-31) | ⬜ 대기 |
-
----
-
-## 기술 스택
-
-| 역할 | 기술 |
+| 항목 | 결과 |
 |------|------|
-| 스트림 수신 | MediaMTX (WHIP → RTSP) |
-| 파이프라인 | GStreamer 1.0 (apt, Ubuntu 22.04) |
-| AI 분석 | Google MediaPipe FaceLandmarker |
-| 제어 서버 | FastAPI + Python GI 바인딩 |
-| 대시보드 | React + hls.js |
-| 배포 | Docker Compose + Caddy |
+| AI branch FPS | 5fps (videorate 제한, 설계 목표 달성) |
+| live branch FPS | 30fps (AI branch와 독립) |
+| HLS 재생 지연 | ~6초 (2초 × 3 세그먼트) |
+| EAR 측정 (정면 얼굴) | 0.16~0.18 (정규화 좌표계) |
+| attention_score 범위 | 0.0~1.0 정상 출력 |
+
+> 상세: [docs/experiment-02-e2e-test.md](docs/experiment-02-e2e-test.md) · [docs/05-results.md](docs/05-results.md)
 
 ---
 
 ## 실행 방법
 
-> Phase 5 이후 채워집니다.
+### 로컬 (Docker Compose)
 
 ```bash
-# 개발 환경 설정 (T-01에서 구현)
-./scripts/dev-setup.sh
+docker compose -f infra/compose/docker-compose.local.yml up --build
+# Dashboard: http://localhost:3000
+# API:       http://localhost:8000
+# MediaMTX:  rtsp://localhost:8554/room1
+```
 
-# 서비스 실행 (T-27에서 구현)
-# docker compose -f infra/compose/docker-compose.local.yml up
+### 서버 배포 (Caddy + TLS)
+
+```bash
+cp infra/compose/.env.server.example infra/compose/.env.server
+# .env.server에 DOMAIN=your-domain.com 설정 후:
+DOMAIN=your-domain.com docker compose \
+  -f infra/compose/docker-compose.server.yml up -d --build
+```
+
+### 로컬 개발 (파일 소스)
+
+```bash
+# MediaMTX
+bash scripts/start-mediamtx.sh
+
+# GStreamer HLS (파일 소스)
+bash media/gstreamer/pipelines/07-hls-branch.sh
+
+# React 대시보드
+cd apps/dashboard && npm run dev
 ```
 
 ---
 
-## 핵심 설계 결정
+## 태스크 진행 현황
 
-- **녹화 포맷: MKV** — MP4는 비정상 종료 시 파일 손상. `matroskamux`는 스트리밍 방식으로 기록하여 크래시에 안전
-- **tee 백프레셔 전략: leaky queue** — AI/HLS branch는 `queue leaky=downstream`으로 느린 처리가 전체 파이프라인을 막지 않게 격리
-- **Python-GStreamer 통합: in-process** — FastAPI + GLib MainLoop를 같은 프로세스에서 실행, `threading.Thread`로 GLib MainLoop 분리
-- **시청자 전달: HLS** — `hlssink2`로 세그먼트 생성, nginx로 서빙. 지연 3~10초 허용
+| Phase | 범위 | 상태 |
+|-------|------|------|
+| Phase 1 | GStreamer 파이프라인 기초 (T01~T06) | ✅ 완료 |
+| Phase 2 | FastAPI + Python GI 연동 (T07~T10) | ✅ 완료 |
+| Phase 3 | React Dashboard + SSE (T11~T15) | ✅ 완료 |
+| Phase 4 | MediaPipe AI 분석 (T16~T20) | ✅ 완료 |
+| Phase 5 | MediaMTX WHIP 연동 (T21~T24) | ✅ 완료 |
+| Phase 6 | Docker 배포 (T25~T29) | ✅ 완료 |
+| Phase 7 | 측정 및 보고서 (T30~T31) | ✅ 완료 |
+
+---
+
+## 기술 스택
+
+| 레이어 | 기술 |
+|--------|------|
+| 미디어 파이프라인 | GStreamer 1.x, tee, hlssink2, matroskamux, appsink |
+| 미디어 서버 | MediaMTX (WHIP ingest, RTSP relay) |
+| AI 분석 | Google MediaPipe FaceLandmarker, EAR 알고리즘 |
+| 백엔드 | FastAPI, uvicorn, Python GI 바인딩, SSE EventBus |
+| 프론트엔드 | React 18, Vite, TypeScript, Tailwind CSS, hls.js, Recharts |
+| 인프라 | Docker Compose, Caddy (자동 TLS), Nginx (SPA 서빙) |
+
+---
+
+> 관련 이슈: [태스크 로드맵 #2](https://github.com/Yelihi/live-class-pipeline/issues/2)
