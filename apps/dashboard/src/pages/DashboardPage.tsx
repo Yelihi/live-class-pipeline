@@ -1,11 +1,14 @@
 import { usePipelineEvents } from "../features/metrics-subscribe/usePipelineEvents";
+import { useFpsHistory } from "../features/metrics-subscribe/useFpsHistory";
 import { BranchStatusCard } from "../widgets/BranchStatusCard";
+import { FpsChart } from "../widgets/FpsChart";
 import { PipelineControlCard } from "../widgets/PipelineControlCard";
 
 const BRANCHES = ["live", "record", "ai", "preview"] as const;
 
 export function DashboardPage() {
   const { metrics, connected } = usePipelineEvents();
+  const fpsHistory = useFpsHistory(metrics);
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
@@ -34,6 +37,7 @@ export function DashboardPage() {
             />
           ))}
         </div>
+        <FpsChart data={fpsHistory} />
       </div>
     </div>
   );
