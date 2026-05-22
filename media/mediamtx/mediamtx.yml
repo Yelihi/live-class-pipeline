@@ -1,0 +1,28 @@
+# MediaMTX 설정 — T-21
+# WHIP(브라우저 송출) + RTSP(GStreamer pull) 활성화
+logLevel: info
+logDestinations: [stdout]
+
+# API 서버 — 경로 목록/상태 확인
+api: yes
+apiAddress: :9997
+
+# RTSP 서버 — GStreamer rtspsrc로 pull
+rtsp: yes
+rtspAddress: :8554
+
+# RTMP 비활성화
+rtmp: no
+
+# HLS 비활성화 — GStreamer hlssink2 사용
+hls: no
+
+# WebRTC/WHIP — 브라우저 송출 수신
+webrtc: yes
+webrtcAddress: :8889
+
+# 경로 설정
+paths:
+  # /room1: 누구나 publish·read 허용
+  room1:
+    source: publisher
