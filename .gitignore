@@ -35,7 +35,10 @@ yarn-error.log*
 # 런타임 미디어 (GStreamer 출력물)
 hls_output/
 recordings/
+output/
 *.mkv
 *.mp4
-*.ts
+# HLS 세그먼트 (.ts) — output/ 하위로만 제한해 TypeScript 파일과 충돌 방지
+output/*.ts
+hls_output/*.ts
 *.m3u8

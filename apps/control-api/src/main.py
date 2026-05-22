@@ -3,6 +3,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .routes.events import router as events_router
 from .routes.metrics import router as metrics_router
@@ -31,6 +32,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Live Class Pipeline Control API", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(pipeline_router)
 app.include_router(metrics_router)
 app.include_router(events_router)
