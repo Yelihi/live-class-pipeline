@@ -2,7 +2,10 @@ import { usePipelineEvents } from "../features/metrics-subscribe/usePipelineEven
 import { useFpsHistory } from "../features/metrics-subscribe/useFpsHistory";
 import { BranchStatusCard } from "../widgets/BranchStatusCard";
 import { FpsChart } from "../widgets/FpsChart";
+import { HlsPlayer } from "../widgets/HlsPlayer";
 import { PipelineControlCard } from "../widgets/PipelineControlCard";
+
+const HLS_URL = `${import.meta.env.VITE_API_URL ?? "http://localhost:8000"}/hls/stream.m3u8`;
 
 const BRANCHES = ["live", "record", "ai", "preview"] as const;
 
@@ -38,6 +41,7 @@ export function DashboardPage() {
           ))}
         </div>
         <FpsChart data={fpsHistory} />
+        <HlsPlayer src={HLS_URL} />
       </div>
     </div>
   );
