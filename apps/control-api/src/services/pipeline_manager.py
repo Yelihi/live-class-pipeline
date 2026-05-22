@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 
 import gi
@@ -18,21 +19,28 @@ _pipeline: Gst.Pipeline | None = None
 _ai_worker: AIWorker | None = None
 _lock = threading.Lock()
 
+HLS_DIR = os.environ.get("HLS_DIR", "/tmp/hls")
+
 def _source_element(source: str) -> str:
     if source.startswith("rtsp://"):
         return f"rtspsrc location={source} latency=200"
     return f"filesrc location={source}"
 
 
-# tee + 4 branch: live/record(30fps fakesink), ai(5fps BGR appsink), preview(5fps fakesink)
+# tee + 4 branch: live(HLS), record(fakesink), ai(appsink), preview(fakesink)
 _PIPELINE_TMPL = """
-  {source_element} !
+  {{source_element}} !
   decodebin !
   videoconvert !
   tee name=t
 
   t. ! queue name=live_queue  max-size-buffers=0  max-size-time=0  max-size-bytes=0  !
-       fakesink name=live_sink  sync=false
+       identity name=live_sink silent=true !
+       videoconvert !
+       video/x-raw,format=I420 !
+       x264enc tune=zerolatency bitrate=2000 speed-preset=ultrafast !
+       hlssink2 location={hls_dir}/seg%05d.ts playlist-location={hls_dir}/stream.m3u8
+                target-duration=2 max-files=10
 
   t. ! queue name=record_queue max-size-buffers=0  max-size-time=0  max-size-bytes=0  !
        fakesink name=record_sink sync=false
@@ -64,12 +72,16 @@ def _on_bus_message(bus, message):
         logger.info("GStreamer EOS — 스트림 종료")
 
 
-def _make_appsink_callback(worker: AIWorker, pipeline: Gst.Pipeline):
+def _make_appsink_callback(worker: AIWorker):
     def on_new_sample(appsink) -> Gst.FlowReturn:
-        sample = appsink.emit("pull-sample")
-        if sample is None:
-            return Gst.FlowReturn.ERROR
-        return worker.on_frame(sample.get_buffer(), sample.get_caps())
+        try:
+            sample = appsink.emit("pull-sample")
+            if sample is None:
+                return Gst.FlowReturn.OK
+            return worker.on_frame(sample.get_buffer(), sample.get_caps())
+        except Exception:
+            logger.exception("appsink new-sample 처리 오류")
+            return Gst.FlowReturn.OK
 
     return on_new_sample
 
@@ -80,9 +92,11 @@ def start_pipeline(input_path: str) -> dict:
         if _pipeline is not None:
             return {"error": "이미 실행 중"}
         metrics.reset()
-        _pipeline = Gst.parse_launch(
-            _PIPELINE_TMPL.format(source_element=_source_element(input_path))
+        os.makedirs(HLS_DIR, exist_ok=True)
+        pipeline_str = _PIPELINE_TMPL.format(hls_dir=HLS_DIR).replace(
+            "{source_element}", _source_element(input_path)
         )
+        _pipeline = Gst.parse_launch(pipeline_str)
 
         bus = _pipeline.get_bus()
         bus.add_signal_watch()
@@ -91,6 +105,7 @@ def start_pipeline(input_path: str) -> dict:
         for branch, element_name in [
             ("live", "live_sink"),
             ("record", "record_sink"),
+            ("ai", "ai_sink"),
             ("preview", "preview_sink"),
         ]:
             metrics.attach_probe(_pipeline, branch, element_name)
@@ -99,9 +114,12 @@ def start_pipeline(input_path: str) -> dict:
         _ai_worker = AIWorker(event_bus)
         appsink = _pipeline.get_by_name("ai_sink")
         if appsink:
-            appsink.connect("new-sample", _make_appsink_callback(_ai_worker, _pipeline))
+            appsink.connect("new-sample", _make_appsink_callback(_ai_worker))
+        else:
+            logger.error("ai_sink 엘리먼트를 찾을 수 없습니다")
 
         _pipeline.set_state(Gst.State.PLAYING)
+        logger.info("파이프라인 시작: %s", input_path)
     event_bus.publish({"type": "pipeline", "state": "started", "input": input_path})
     return {"state": "started"}
 
