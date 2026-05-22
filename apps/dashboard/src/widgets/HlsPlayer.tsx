@@ -8,6 +8,11 @@ interface Props {
 
 export function HlsPlayer({ src, onTimeSync }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const onTimeSyncRef = useRef(onTimeSync);
+
+  useEffect(() => {
+    onTimeSyncRef.current = onTimeSync;
+  }, [onTimeSync]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -18,20 +23,18 @@ export function HlsPlayer({ src, onTimeSync }: Props) {
       hls.loadSource(src);
       hls.attachMedia(video);
 
-      if (onTimeSync) {
-        hls.on(Hls.Events.FRAG_CHANGED, (_event, data) => {
-          const programDateTime = data.frag.programDateTime;
-          if (programDateTime != null) {
-            onTimeSync(programDateTime);
-          }
-        });
-      }
+      hls.on(Hls.Events.FRAG_CHANGED, (_event, data) => {
+        const programDateTime = data.frag.programDateTime;
+        if (programDateTime != null && onTimeSyncRef.current) {
+          onTimeSyncRef.current(programDateTime);
+        }
+      });
 
       return () => hls.destroy();
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = src;
     }
-  }, [src, onTimeSync]);
+  }, [src]);
 
   return (
     <div className="rounded-lg bg-gray-800 p-4">
