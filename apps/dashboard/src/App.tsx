@@ -31,7 +31,12 @@ export default function App() {
           송출
         </button>
       </nav>
-      {tab === "dashboard" ? <DashboardPage /> : <PublisherPage />}
+      <div className={tab === "dashboard" ? "" : "hidden"}>
+        <DashboardPage />
+      </div>
+      <div className={tab === "publish" ? "" : "hidden"}>
+        <PublisherPage />
+      </div>
     </>
   );
 }
