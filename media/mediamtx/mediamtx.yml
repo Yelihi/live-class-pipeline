@@ -21,14 +21,11 @@ hls: no
 webrtc: yes
 webrtcAddress: :8889
 
-# STUN 설정 — 서버 배포 시 공인 IP 추가 필요 (로컬에서는 생략)
+# STUN 설정 — 서버 배포 시만 활성화 (로컬 테스트에서는 불필요)
 # webrtcAdditionalHosts:
-#   - YOUR_SERVER_PUBLIC_IP   # curl ifconfig.me 로 확인
-
-webrtcICEServers2:
-  - urls:
-      - stun:stun.l.google.com:19302
-      - stun:stun1.l.google.com:19302
+#   - YOUR_SERVER_PUBLIC_IP
+# webrtcICEServers:
+#   - stun:stun.l.google.com:19302
 
 # 경로 설정
 paths:
