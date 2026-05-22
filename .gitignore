@@ -32,6 +32,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# ML 모델 파일 (용량 큼 — 다운로드 방법은 README 참조)
+media/models/
+
 # 런타임 미디어 (GStreamer 출력물)
 hls_output/
 recordings/
