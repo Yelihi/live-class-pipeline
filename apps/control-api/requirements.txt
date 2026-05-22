@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+# GStreamer Python 바인딩은 pip 설치 불가 — 시스템 패키지 사용:
+# apt-get install python3-gst-1.0 python3-gi gir1.2-gstreamer-1.0
+# venv 생성 시 반드시 --system-site-packages 옵션 필요:
+# python3 -m venv .venv --system-site-packages
