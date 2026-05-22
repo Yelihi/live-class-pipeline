@@ -1,12 +1,12 @@
 import Hls from "hls.js";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 
 interface Props {
   src: string;
   onTimeSync?: (wallClockMs: number) => void;
 }
 
-export function HlsPlayer({ src, onTimeSync }: Props) {
+export const HlsPlayer = memo(function HlsPlayer({ src, onTimeSync }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const onTimeSyncRef = useRef(onTimeSync);
 
@@ -30,6 +30,16 @@ export function HlsPlayer({ src, onTimeSync }: Props) {
         }
       });
 
+      // 파이프라인 중지 후 세그먼트 미도착 시 무한 재시도 방지
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          hls.startLoad();
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hls.recoverMediaError();
+        }
+      });
+
       return () => hls.destroy();
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = src;
@@ -49,4 +59,4 @@ export function HlsPlayer({ src, onTimeSync }: Props) {
       <p className="text-gray-500 text-xs mt-2">{src}</p>
     </div>
   );
-}
+});

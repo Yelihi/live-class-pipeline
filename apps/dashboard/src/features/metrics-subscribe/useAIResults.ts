@@ -35,9 +35,10 @@ export function useAIResults(eventSource: EventSource | null) {
     return () => eventSource.removeEventListener("message", handler);
   }, [eventSource]);
 
-  function getResultAtTime(wallClockMs: number): AIResult | null {
+  // bufferRef만 사용 — 의존성 없이 안정적인 참조 유지
+  const getResultAtTime = useCallback((wallClockMs: number): AIResult | null => {
     return findClosest(bufferRef.current, wallClockMs);
-  }
+  }, []);
 
   return { latestResult, getResultAtTime };
 }

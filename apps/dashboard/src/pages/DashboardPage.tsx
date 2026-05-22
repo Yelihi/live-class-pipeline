@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAIResults } from "../features/metrics-subscribe/useAIResults";
 import { useFpsHistory } from "../features/metrics-subscribe/useFpsHistory";
 import { usePipelineEvents } from "../features/metrics-subscribe/usePipelineEvents";
+import type { AIResult } from "../shared/types/pipeline";
 import { AIResultPanel } from "../widgets/AIResultPanel";
 import { BranchStatusCard } from "../widgets/BranchStatusCard";
 import { FpsChart } from "../widgets/FpsChart";
@@ -15,14 +16,21 @@ export function DashboardPage() {
   const { metrics, connected, eventSource } = usePipelineEvents();
   const fpsHistory = useFpsHistory(metrics);
   const { latestResult, getResultAtTime } = useAIResults(eventSource);
-  const [syncedResult, setSyncedResult] = useState(latestResult);
+  const [syncedResult, setSyncedResult] = useState<AIResult | null>(null);
 
+  // latestResult를 ref로 추적해 handleTimeSync deps에서 제거
+  const latestResultRef = useRef<AIResult | null>(null);
+  useEffect(() => {
+    latestResultRef.current = latestResult;
+  }, [latestResult]);
+
+  // getResultAtTime이 stable하므로 handleTimeSync도 안정적 참조 유지
   const handleTimeSync = useCallback(
     (wallClockMs: number) => {
       const found = getResultAtTime(wallClockMs);
-      setSyncedResult(found ?? latestResult);
+      setSyncedResult(found ?? latestResultRef.current);
     },
-    [getResultAtTime, latestResult]
+    [getResultAtTime]
   );
 
   return (
