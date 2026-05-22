@@ -1,0 +1,35 @@
+# Caddy reverse proxy + 자동 TLS
+# DOMAIN 환경변수 필요: DOMAIN=your-domain.com docker-compose up
+# 테스트 시 staging CA 주석 해제:
+# {
+#     acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+# }
+
+{$DOMAIN} {
+    handle /pipeline/* {
+        reverse_proxy api:8000
+    }
+    handle /metrics {
+        reverse_proxy api:8000
+    }
+    handle /events {
+        reverse_proxy api:8000
+        # SSE: 버퍼링 비활성화 (응답 즉시 전달)
+        flush_interval -1
+    }
+    handle /hls/* {
+        reverse_proxy api:8000
+    }
+    handle /health {
+        reverse_proxy api:8000
+    }
+    # React 대시보드 — 나머지 모든 경로
+    handle * {
+        reverse_proxy dashboard:80
+    }
+}
+
+# MediaMTX WHIP 엔드포인트 — 별도 포트
+{$DOMAIN}:8889 {
+    reverse_proxy mediamtx:8889
+}

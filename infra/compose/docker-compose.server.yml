@@ -1,0 +1,62 @@
+version: "3.9"
+
+volumes:
+  hls_data:
+  recording_data:
+  caddy_data:
+  caddy_config:
+
+services:
+
+  caddy:
+    image: caddy:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+      - "8889:8889"     # WHIP
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ../../infra/proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - dashboard
+    restart: unless-stopped
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    ports:
+      - "8554:8554"   # RTSP
+      - "9997:9997"   # API
+    volumes:
+      - ../../media/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/gstreamer.Dockerfile
+    environment:
+      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554/room1
+      - HLS_DIR=/tmp/hls
+    volumes:
+      - hls_data:/tmp/hls
+      - recording_data:/app/output
+      - ../../media/models:/app/media/models:ro
+    depends_on:
+      - mediamtx
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: infra/docker/dashboard.Dockerfile
+      args:
+        - VITE_API_URL=https://${DOMAIN}
+        - VITE_MEDIAMTX_URL=https://${DOMAIN}:8889
+    depends_on:
+      - api
+    restart: unless-stopped

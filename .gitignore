@@ -31,6 +31,7 @@ yarn-error.log*
 # 환경변수 (예시 파일 제외)
 .env*
 !.env.example
+!.env.server.example
 
 # ML 모델 파일 (용량 큼 — 다운로드 방법은 README 참조)
 media/models/
