@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# T-17: appsink → MediaPipe LIVE_STREAM 연동
+# T-17/T-18: appsink → MediaPipe LIVE_STREAM 연동 + EAR/attention score
 # Dev Container(Ubuntu 22.04) 전용 — gi(python3-gst-1.0) 필요
 # 실행: python3 media/gstreamer/python/appsink_mediapipe.py [input.mp4]
 import sys
@@ -15,6 +15,7 @@ import numpy as np  # noqa: E402
 import mediapipe as mp  # noqa: E402
 from mediapipe.tasks import python  # noqa: E402
 from mediapipe.tasks.python import vision  # noqa: E402
+from attention_analyzer import analyze  # noqa: E402
 
 Gst.init(None)
 
@@ -34,9 +35,14 @@ def _on_result(result, _output_image, timestamp_ms: int) -> None:
     with _lock:
         _latest["landmarks"] = result.face_landmarks
         _latest["ts_ms"] = timestamp_ms
-    if result.face_landmarks:
-        count = len(result.face_landmarks[0])
-        print(f"[{timestamp_ms:8d}ms] 얼굴 감지: {count}개 랜드마크")
+    att = analyze(result.face_landmarks)
+    if att.face_detected:
+        print(
+            f"[{timestamp_ms:8d}ms] "
+            f"EAR={att.avg_ear:.3f}  "
+            f"front={att.is_facing_front}  "
+            f"score={att.attention_score:.3f}"
+        )
     else:
         print(f"[{timestamp_ms:8d}ms] 얼굴 없음")
 
