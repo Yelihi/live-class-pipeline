@@ -18,12 +18,14 @@ export function BranchStatusCard({ branch, metrics }: Props) {
   return (
     <div className="rounded-lg bg-gray-800 p-4">
       <h3 className="text-white font-medium">{BRANCH_LABELS[branch]}</h3>
-      <p className="text-gray-400 text-sm mt-1">
-        FPS: {metrics ? metrics.fps.toFixed(1) : "—"}
-      </p>
-      <p className="text-gray-500 text-xs mt-1">
-        프레임: {metrics ? metrics.frame_count : "—"}
-      </p>
+      <div className="mt-2 space-y-1">
+        <p className="text-2xl font-bold text-green-400">
+          {metrics ? `${metrics.fps.toFixed(1)} fps` : "—"}
+        </p>
+        <p className="text-gray-400 text-xs">
+          총 프레임: {metrics?.frame_count ?? 0}
+        </p>
+      </div>
     </div>
   );
 }
