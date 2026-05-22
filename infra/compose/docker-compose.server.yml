@@ -45,7 +45,6 @@ services:
     volumes:
       - hls_data:/tmp/hls
       - recording_data:/app/output
-      - ../../media/models:/app/media/models:ro
     depends_on:
       - mediamtx
     restart: unless-stopped
