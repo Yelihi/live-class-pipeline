@@ -20,7 +20,7 @@ GST_CLOCK_TIME_NONE = 2**64 - 1
 MODEL_PATH = Path(
     os.environ.get(
         "FACE_LANDMARKER_MODEL",
-        str(Path(__file__).parent.parent.parent.parent.parent / "media" / "models" / "face_landmarker.task"),
+        str(Path(__file__).parent.parent.parent / "media" / "models" / "face_landmarker.task"),
     )
 )
 
