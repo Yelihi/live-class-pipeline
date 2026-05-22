@@ -1,17 +1,29 @@
-import { usePipelineEvents } from "../features/metrics-subscribe/usePipelineEvents";
+import { useCallback, useState } from "react";
+import { useAIResults } from "../features/metrics-subscribe/useAIResults";
 import { useFpsHistory } from "../features/metrics-subscribe/useFpsHistory";
+import { usePipelineEvents } from "../features/metrics-subscribe/usePipelineEvents";
+import { AIResultPanel } from "../widgets/AIResultPanel";
 import { BranchStatusCard } from "../widgets/BranchStatusCard";
 import { FpsChart } from "../widgets/FpsChart";
 import { HlsPlayer } from "../widgets/HlsPlayer";
 import { PipelineControlCard } from "../widgets/PipelineControlCard";
 
+const BRANCHES = ["live", "record", "ai", "preview"] as const;
 const HLS_URL = `${import.meta.env.VITE_API_URL ?? "http://localhost:8000"}/hls/stream.m3u8`;
 
-const BRANCHES = ["live", "record", "ai", "preview"] as const;
-
 export function DashboardPage() {
-  const { metrics, connected } = usePipelineEvents();
+  const { metrics, connected, eventSource } = usePipelineEvents();
   const fpsHistory = useFpsHistory(metrics);
+  const { latestResult, getResultAtTime } = useAIResults(eventSource);
+  const [syncedResult, setSyncedResult] = useState(latestResult);
+
+  const handleTimeSync = useCallback(
+    (wallClockMs: number) => {
+      const found = getResultAtTime(wallClockMs);
+      setSyncedResult(found ?? latestResult);
+    },
+    [getResultAtTime, latestResult]
+  );
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
@@ -29,8 +41,10 @@ export function DashboardPage() {
           {connected ? "● SSE 연결됨" : "○ 연결 끊김"}
         </span>
       </div>
+
       <div className="space-y-6">
         <PipelineControlCard />
+
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {BRANCHES.map((branch) => (
             <BranchStatusCard
@@ -40,8 +54,13 @@ export function DashboardPage() {
             />
           ))}
         </div>
+
         <FpsChart data={fpsHistory} />
-        <HlsPlayer src={HLS_URL} />
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <HlsPlayer src={HLS_URL} onTimeSync={handleTimeSync} />
+          <AIResultPanel result={syncedResult ?? latestResult} />
+        </div>
       </div>
     </div>
   );

@@ -3,9 +3,10 @@ import { useEffect, useRef } from "react";
 
 interface Props {
   src: string;
+  onTimeSync?: (wallClockMs: number) => void;
 }
 
-export function HlsPlayer({ src }: Props) {
+export function HlsPlayer({ src, onTimeSync }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -16,12 +17,21 @@ export function HlsPlayer({ src }: Props) {
       const hls = new Hls({ lowLatencyMode: false });
       hls.loadSource(src);
       hls.attachMedia(video);
+
+      if (onTimeSync) {
+        hls.on(Hls.Events.FRAG_CHANGED, (_event, data) => {
+          const programDateTime = data.frag.programDateTime;
+          if (programDateTime != null) {
+            onTimeSync(programDateTime);
+          }
+        });
+      }
+
       return () => hls.destroy();
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      // Safari: 네이티브 HLS 지원
       video.src = src;
     }
-  }, [src]);
+  }, [src, onTimeSync]);
 
   return (
     <div className="rounded-lg bg-gray-800 p-4">

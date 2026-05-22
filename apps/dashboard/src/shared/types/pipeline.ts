@@ -27,4 +27,16 @@ export interface SSEPipelineEvent {
   input?: string;
 }
 
-export type SSEEvent = SSEMetricsEvent | SSEPipelineEvent;
+export interface AIResult {
+  type: "ai_result";
+  pts_ns: number;
+  wall_clock_ms: number;
+  face_detected: boolean;
+  left_ear: number;
+  right_ear: number;
+  avg_ear: number;
+  is_facing_front: boolean;
+  attention_score: number;
+}
+
+export type SSEEvent = SSEMetricsEvent | SSEPipelineEvent | AIResult;

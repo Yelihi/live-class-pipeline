@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MetricsSnapshot, SSEEvent } from "../../shared/types/pipeline";
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -6,9 +6,11 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 export function usePipelineEvents() {
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
+  const sourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     const source = new EventSource(`${BASE_URL}/events`);
+    sourceRef.current = source;
 
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
@@ -22,9 +24,10 @@ export function usePipelineEvents() {
 
     return () => {
       source.close();
+      sourceRef.current = null;
       setConnected(false);
     };
   }, []);
 
-  return { metrics, connected };
+  return { metrics, connected, eventSource: sourceRef.current };
 }
