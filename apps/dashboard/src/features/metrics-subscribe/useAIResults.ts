@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AIResult } from "../../shared/types/pipeline";
 
 const MAX_BUFFER = 100;
