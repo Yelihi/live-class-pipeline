@@ -18,9 +18,15 @@ _pipeline: Gst.Pipeline | None = None
 _ai_worker: AIWorker | None = None
 _lock = threading.Lock()
 
+def _source_element(source: str) -> str:
+    if source.startswith("rtsp://"):
+        return f"rtspsrc location={source} latency=200"
+    return f"filesrc location={source}"
+
+
 # tee + 4 branch: live/record(30fps fakesink), ai(5fps BGR appsink), preview(5fps fakesink)
 _PIPELINE_TMPL = """
-  filesrc location={input_path} !
+  {source_element} !
   decodebin !
   videoconvert !
   tee name=t
@@ -74,7 +80,9 @@ def start_pipeline(input_path: str) -> dict:
         if _pipeline is not None:
             return {"error": "이미 실행 중"}
         metrics.reset()
-        _pipeline = Gst.parse_launch(_PIPELINE_TMPL.format(input_path=input_path))
+        _pipeline = Gst.parse_launch(
+            _PIPELINE_TMPL.format(source_element=_source_element(input_path))
+        )
 
         bus = _pipeline.get_bus()
         bus.add_signal_watch()
