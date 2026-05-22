@@ -113,6 +113,74 @@ cd apps/dashboard && npm run dev
 
 ---
 
+## 대시보드 사용법
+
+### 화면 구성
+
+대시보드는 두 개의 탭으로 이루어져 있습니다.
+
+#### Dashboard 탭 (`http://localhost:3000`)
+
+| 구성 요소 | 설명 |
+|-----------|------|
+| **SSE 연결 상태** | 우측 상단 배지 — `● SSE 연결됨` / `○ 연결 끊김` |
+| **Pipeline Control** | Start / Stop 버튼으로 GStreamer 파이프라인 제어 |
+| **Branch Status Cards** | live · record · ai · preview 4개 branch의 현재 FPS · 드롭 프레임 수 실시간 표시 |
+| **FPS Chart** | 시계열 Recharts 그래프 — 최근 60초 branch별 FPS 추이 |
+| **HLS Player** | hls.js 기반 플레이어 — `FRAG_CHANGED` 이벤트로 AI 결과와 시간 동기화 |
+| **AI Result Panel** | HLS 재생 시점 기준 ±500ms 창에서 매핑된 집중도 표시 |
+
+#### AI Result Panel 세부
+
+```
+Attention Score  ████████░░ 80 %   (초록≥70 / 노랑≥40 / 빨강<40)
+Left EAR   0.17     Right EAR  0.18
+정면 응시  ✓ / ✗
+얼굴 미감지 시 "얼굴을 인식할 수 없습니다" 문구 표시
+```
+
+#### 송출 탭
+
+브라우저 카메라를 WHIP 프로토콜로 MediaMTX에 직접 전송합니다.
+
+| 항목 | 값 |
+|------|-----|
+| 해상도 | 1280 × 720, 30fps |
+| 프로토콜 | WebRTC WHIP POST → `VITE_MEDIAMTX_URL/room1/whip` |
+| 오디오 | 비활성화 (영상만 전송) |
+
+---
+
+### 엔드-투-엔드 테스트 순서
+
+```text
+1. docker compose up 으로 스택 기동 확인
+   → mediamtx / api / dashboard 모두 healthy
+
+2. http://localhost:3000 → [송출] 탭
+   → "송출 시작" 클릭
+   → 카메라 권한 허용 → "● 송출 중 — room1" 표시 확인
+
+3. [Dashboard] 탭 → Pipeline Control → "Start" 클릭
+   → SSE 배지가 "● SSE 연결됨"으로 전환
+   → Branch Status Cards에 FPS 수치 표시 시작
+
+4. 약 6초 후 HLS 플레이어에서 영상 재생 시작
+   (3 × 2초 세그먼트 버퍼)
+
+5. AI Result Panel에서 집중도 점수 및 EAR 값 실시간 확인
+```
+
+> WHIP 송출 없이 파일 소스로 테스트하려면:
+> ```bash
+> # API 컨테이너 내부에서
+> curl -X POST http://localhost:8000/pipeline/start \
+>   -H "Content-Type: application/json" \
+>   -d '{"source": "media/sample.mp4"}'
+> ```
+
+---
+
 ## 태스크 진행 현황
 
 | Phase | 범위 | 상태 |
