@@ -152,6 +152,28 @@ bash media/gstreamer/pipelines/02-four-branch.sh /path/to/video.mp4
 - `name=live_sink` 등으로 이름을 붙이면 나중에 Python에서 `pipeline.get_by_name("live_sink")`로 조회 가능
 - 실행 로그에서 `live_sink`, `record_sink`, `ai_sink`, `preview_sink`가 모두 출력되면 4분기 성공
 
+### T-04: queue 백프레셔 정책 실험
+
+```bash
+# 실험 1: non-leaky — AI 지연이 live branch를 블락하는 현상 관찰
+bash media/gstreamer/pipelines/03-backpressure-experiment.sh no-leaky
+
+# 실험 2: leaky — live branch는 정상 속도 유지 확인
+bash media/gstreamer/pipelines/03-backpressure-experiment.sh leaky
+
+# 정책 적용된 4분기 파이프라인 실행
+bash media/gstreamer/pipelines/04-four-branch-with-policy.sh
+```
+
+**queue 정책 요약**:
+
+| Branch | 정책 | 이유 |
+|--------|------|------|
+| live, record | non-leaky, 무제한 버퍼 | 데이터 유실 불가 |
+| ai, preview | `leaky=downstream max-size-buffers=5` | 최신 프레임만 필요 |
+
+- 실험 상세 결과: `docs/experiment-01-backpressure.md` 참고
+
 ---
 
 ## Python GI 바인딩 확인 (T-07 준비)
