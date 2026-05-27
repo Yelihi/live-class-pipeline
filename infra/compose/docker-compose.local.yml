@@ -23,7 +23,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MEDIAMTX_RTSP_URL=rtsp://mediamtx:8554/room1
+      - MEDIAMTX_RTSP_BASE_URL=rtsp://mediamtx:8554
       - HLS_DIR=/tmp/hls
     volumes:
       - hls_data:/tmp/hls
