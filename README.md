@@ -70,46 +70,46 @@ GStreamer를 사용하면 각 경로를 C 레벨에서 독립 처리하여 AI가
 ```mermaid
 graph TD
     subgraph Browser["브라우저 (학생/운영자)"]
-        CAM[카메라]
-        PUB[Publisher Page<br/>WHIP 송출]
-        DASH[Operator Dashboard<br/>React + WebRTC WHEP]
+        CAM["카메라"]
+        PUB["Publisher Page\nWHIP 송출"]
+        DASH["Operator Dashboard\nReact + WebRTC WHEP"]
     end
 
     subgraph Ingest["Media Ingest"]
-        MTX[MediaMTX<br/>WHIP → RTSP 변환<br/>WHEP 엔드포인트]
+        MTX["MediaMTX\nWHIP → RTSP 변환\nWHEP 엔드포인트"]
     end
 
-    subgraph GST["GStreamer Pipeline (C 네이티브)"]
-        SRC[rtspsrc]
-        TEE[tee 4분기]
-        LB[Live Branch<br/>x264 → hlssink2]
-        RB[Record Branch<br/>fakesink]
-        AB[AI Branch<br/>320×240 5fps<br/>leaky queue]
-        PB[Preview Branch<br/>320×240 5fps<br/>leaky queue]
+    subgraph GST["GStreamer Pipeline"]
+        SRC["rtspsrc"]
+        TEE["tee 4분기"]
+        LB["Live Branch\nx264 + hlssink2\n30fps"]
+        RB["Record Branch\nfakesink\n30fps"]
+        AB["AI Branch\n320x240 5fps\nleaky queue"]
+        PB["Preview Branch\n320x240 5fps\nleaky queue"]
     end
 
-    subgraph AILayer["AI Worker (Python)"]
-        MP[MediaPipe FaceLandmarker<br/>LIVE_STREAM 모드]
-        AT[EAR 계산<br/>Attention Score 0~100]
+    subgraph AILayer["AI Worker"]
+        MP["MediaPipe FaceLandmarker\nLIVE_STREAM 모드"]
+        AT["EAR 계산\nAttention Score 0~100"]
     end
 
     subgraph API["FastAPI Control API"]
-        CTRL[/pipeline/start|stop|status]
-        METRICS[/metrics — pad probe 기반]
-        SSE[/events — SSE 1fps 브로드캐스트]
+        CTRL["POST /pipeline/start\nPOST /pipeline/stop\nGET  /pipeline/status"]
+        METRICS["GET /metrics\npad probe 기반"]
+        SSE["GET /events\nSSE 1fps 브로드캐스트"]
     end
 
-    CAM -->|getUserMedia| PUB
-    PUB -->|WHIP POST :8889| MTX
-    MTX -->|RTSP pull :8554| SRC
+    CAM -->|"getUserMedia"| PUB
+    PUB -->|"WHIP POST :8889"| MTX
+    MTX -->|"RTSP pull :8554"| SRC
     SRC --> TEE
     TEE --> LB & RB & AB & PB
-    LB -->|HLS /hls/room1/| API
-    MTX -->|WHEP :8889/room1/whep| DASH
-    AB -->|BGR frame| MP --> AT -->|ai_result SSE| SSE
-    METRICS -->|metrics SSE| SSE
-    SSE -->|EventSource| DASH
-    CTRL -.->|start/stop| GST
+    LB -->|"HLS segments"| API
+    MTX -->|"WHEP :8889"| DASH
+    AB -->|"BGR frame"| MP --> AT -->|"ai_result event"| SSE
+    METRICS -->|"metrics event"| SSE
+    SSE -->|"EventSource"| DASH
+    CTRL -.->|"제어"| GST
 ```
 
 ### 포트 구성
