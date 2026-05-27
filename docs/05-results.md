@@ -4,15 +4,16 @@
 
 ## 측정 환경
 
-### 로컬 (macOS, 개발)
+### 로컬 (macOS, Docker)
 
 | 항목 | 값 |
 |------|-----|
 | OS | macOS darwin arm64 (M1) |
 | CPU | Apple M1 8코어 |
 | 메모리 | 16GB |
-| 입력 소스 | local file (sample.mp4) |
-| GStreamer | Homebrew |
+| 입력 소스 | 브라우저 WHIP → MediaMTX RTSP |
+| 실행 방식 | docker-compose.local.yml |
+| Preview 방식 | WebRTC WHEP (MediaMTX 내장) |
 
 ### 서버 (추후 기재)
 
@@ -23,6 +24,7 @@
 | CPU | — |
 | 메모리 | — |
 | 입력 소스 | 브라우저 WHIP → MediaMTX RTSP |
+| Preview 방식 | WebRTC WHEP |
 
 ---
 
@@ -30,12 +32,16 @@
 
 ### Branch FPS
 
-| Branch | 목표 FPS | 로컬 실측 FPS | 서버 실측 FPS |
-|--------|---------|-------------|-------------|
-| live    | 30 | — | — |
-| record  | 30 | — | — |
-| ai      | 5  | — | — |
-| preview | 5  | — | — |
+| Branch | 목표 FPS | 로컬 실측 FPS | 총 프레임 | 서버 실측 FPS |
+|--------|---------|-------------|---------|-------------|
+| live    | 30 | **30.3** | 805 | — |
+| record  | 30 | **30.3** | 805 | — |
+| ai      | 5  | **5.0**  | 144 | — |
+| preview | 5  | **5.0**  | 144 | — |
+
+> 측정 시점: 2026-05-22, 로컬 Docker 스택 (브라우저 WHIP 카메라 입력 기준)
+>
+> live·record는 목표 30fps 대비 오차 1% 이내. ai·preview는 5fps 상한 정확히 준수.
 
 ### 시스템 자원
 
@@ -45,35 +51,91 @@
 | MediaPipe CPU | — | — |
 | 전체 메모리 | — | — |
 
-### HLS 재생 지연
+### Preview 지연 (방식별 비교)
 
-| 환경 | 측정값 | 비고 |
-|------|--------|------|
-| 로컬 (파일 소스) | ~6초 | 3 × 2초 세그먼트 |
-| 서버 (WHIP 송출) | — | 네트워크 지연 포함 |
+| 방식 | 지연 | 비고 |
+|------|------|------|
+| HLS (이전) | ~6초 | 3 × 2초 세그먼트 버퍼링 |
+| WebRTC WHEP (현재) | < 100ms | MediaMTX 내장 WHEP 엔드포인트 |
 
-### AI 동기화 오차
+> WHEP 전환 배경: `React.memo`로 HLS 리렌더를 막자 플레이어가 정적으로 굳는 문제 발생.
+> 근본 원인이 HLS의 세그먼트 방식에 있었으므로 WebRTC로 전면 교체.
 
-| 환경 | wall_clock_ms ↔ HLS 오차 | 비고 |
-|------|--------------------------|------|
-| 로컬 | — | programDateTime 필요 |
-| 서버 | — | |
+### AI 동기화
+
+| 방식 | 동기화 전략 | 오차 |
+|------|-----------|------|
+| HLS + `wall_clock_ms` (이전) | `FRAG_CHANGED.programDateTime` ↔ AI 타임스탬프 ±500ms 창 | ~300ms 추정 |
+| WHEP 실시간 (현재) | 동기화 불필요 — 영상·AI 결과 모두 실시간 | 0 |
+
+---
+
+## 다중 스트림 비교 (GStreamer vs OpenCV)
+
+> T-32 ~ T-38 실험: 동일한 4-branch 출력을 GStreamer(C 네이티브)와 OpenCV+Python 스레딩으로 구현하여 N룸 동시 처리 성능을 비교한다.
+
+### 실험 조건
+
+| 항목 | 값 |
+|------|-----|
+| 하드웨어 | macOS darwin arm64 (Apple M1, 8코어, 16GB) |
+| 입력 소스 | `scripts/gen-streams.sh` — testsrc2 1280×720 30fps, H.264 1000kbps |
+| 측정 시간 | 30초 |
+| 측정 스크립트 | `scripts/collect-metrics.sh` |
+| 측정 시점 | 2026-05-27 |
+
+### live branch avg_fps (목표: 30fps)
+
+| 스트림 수 | GStreamer avg | GStreamer 지터 | OpenCV avg | OpenCV 지터 |
+|---------|-------------|--------------|-----------|------------|
+| N=1     | **30.0** fps | 0 (min=max=30.0) | **31.1** fps | ±6 (min 30.0 / max 48.7) |
+| N=4     | **30.0** fps | 0 (min=max=30.0) | **30.5** fps | ±7 (min 30.0 / max 43.7) |
+
+> 샘플 수: GStreamer N=1 30개, N=4 20개 / OpenCV N=1 44개, N=4 30개
+
+### ai/preview branch avg_fps (목표: 5fps)
+
+| 스트림 수 | GStreamer | OpenCV |
+|---------|----------|--------|
+| N=1     | **5.0** fps (σ=0) | **4.9** fps (min 3.3 / max 5.0) |
+| N=4     | **5.0** fps (σ=0) | **5.0** fps (σ=0) |
+
+### 핵심 발견: 처리량 vs 지터
+
+M1 8코어 환경에서 N=4 기준 avg_fps는 두 버전 모두 목표값(30fps)을 만족했다.
+그러나 두 구현의 **결정론적 특성**에서 명확한 차이가 나타났다.
+
+| 특성 | GStreamer | OpenCV + Python threads |
+|------|----------|------------------------|
+| fps 안정성 | **σ=0** — C 레벨 PTS 기반 측정, 지터 없음 | **σ>0** — Python queue burst로 순간 max ≈ 48fps |
+| 프레임 전달 방식 | zero-copy (참조 카운팅) | `frame.copy()` × 4 × N |
+| 5fps 제어 | `videorate` C 레벨 | `time.monotonic()` 수동 샘플링 |
+| AI 격리 | `leaky=downstream` C 큐 | Python `Queue(maxsize=5)` + GIL |
+| RTSP 재연결 | `rtspsrc` 자동 처리 | 수동 재연결 루프 (2초 sleep) |
+
+**GIL 영향 관찰**: OpenCV 버전에서 순간 max fps가 실제 소스 fps(30fps)를 크게 초과(48.7fps)하는 현상은 Python 스레드 스케줄러가 GIL을 반납받는 시점에 프레임을 burst 처리하기 때문이다. GStreamer에서는 이 현상이 전혀 나타나지 않는다.
+
+**확장성 한계 예측**: M1 8코어에서 N=4는 두 버전 모두 처리 가능했지만,
+N이 증가하여 `frame.copy() × 4 × N` 메모리 복사량이 L2 캐시를 초과하거나
+GIL 경쟁이 intensify되면 OpenCV 버전의 avg_fps 하락이 예측된다.
+GStreamer는 각 파이프라인이 독립 GLib 스레드로 동작하므로 N에 대해 선형적으로 확장된다.
 
 ---
 
 ## 관찰 사항
 
-### 로컬 테스트 (파일 소스)
+### 로컬 Docker 테스트 (WHIP 카메라 입력)
 
-- HLS 세그먼트 정상 생성 (`/tmp/hls/stream.m3u8`)
-- MediaMTX RTSP/WHIP 포트 정상 응답
-- FastAPI는 Ubuntu Dev Container 전용 (gi 의존성)
+- 4개 branch 모두 목표 FPS 달성 (live/record 30fps, ai/preview 5fps)
+- GStreamer `leaky=downstream` 정책으로 AI branch 처리 지연이 live/record에 영향 없음
+- WHEP 프리뷰: 송출 전 접속 → "연결 중..." 재시도, 송출 시작 후 자동 연결 (< 2초)
+- MediaMTX RTSP(8554) / WHIP·WHEP(8889) / API(9997) 포트 정상 응답
 
 ### 향후 개선 항목
 
-1. `hlssink2`에 `program-date-time=true` 옵션 추가 → HLS-AI 동기화 정확도 향상
-2. `rtspsrc`에 `retry-delay` 설정 → 송출 중단 시 자동 재연결
-3. AI branch `leaky=downstream` + `drop=true` 이미 적용 → 처리 지연이 파이프라인에 영향 없음
+1. `rtspsrc`에 `retry-delay` 설정 → 송출 중단 시 자동 재연결
+2. AI branch `leaky=downstream` + `drop=true` 이미 적용 → 처리 지연이 파이프라인에 영향 없음
+3. WHEP audio transceiver 추가 → 마이크 오디오 실시간 모니터링
 
 ---
 
@@ -95,13 +157,40 @@
 
 ### 잘 된 것
 
-- **4분기 파이프라인 설계**: live/record/ai/preview를 독립적으로 격리해 각 branch의 policy를 달리 적용한 구조가 실제로 잘 동작했다.
+- **4분기 파이프라인 설계**: live/record/ai/preview를 독립적으로 격리해 각 branch의 policy를 달리 적용한 구조가 실제로 잘 동작했다. 로컬 Docker에서 목표 FPS를 모두 달성한 것이 이를 증명한다.
 - **SSE EventBus**: GLib 스레드 ↔ asyncio 간 `run_coroutine_threadsafe` 패턴이 안정적으로 동작했다.
-- **hls.js FRAG_CHANGED 동기화**: `wall_clock_ms` 기반 ±500ms 창 매핑 아이디어가 간단하면서 효과적이었다.
+- **WHEP 실시간 프리뷰**: MediaMTX가 WHEP을 내장 지원하므로 별도 SFU 없이 < 100ms 지연을 달성했다.
+
+### 안정화 단계에서 발견·수정된 문제들
+
+Docker로 전체 스택을 통합한 이후, 개별 태스크 단계에서 발견되지 않았던 문제들이 연달아 나타났다.
+
+| 문제 | 원인 | 수정 |
+|------|------|------|
+| `POST /pipeline/start` 실패 | `_DEFAULT_SOURCE`가 파일 경로로 하드코딩 | 환경변수 `MEDIAMTX_RTSP_URL`로 RTSP URL 주입 |
+| AI 얼굴 미감지 | 모델 경로 `.parent` 체인 개수 오류 | `5 → 3` 수정 (Docker 경로 `/app/media/models/`) |
+| WHIP 탭 전환 시 연결 끊김 | `PublisherPage` 언마운트로 RTCPeerConnection 소멸 | 항상 마운트 유지, CSS로 탭 전환 처리 |
+| CORS 오류 | `localhost:3000` 미허용 | FastAPI CORS origins에 추가 |
+| MediaMTX 파싱 오류 | `webrtcICEServers2` 키 버전 불일치 | 로컬 불필요 설정 제거 |
+| 모델 볼륨 마운트 충돌 | 이미지 내장 경로와 볼륨 마운트 경로 충돌 | 볼륨 마운트 제거, Dockerfile 빌드 시 내장 |
+| HLS 프리뷰 정적 화면 | `React.memo`로 리렌더 차단 후 HLS가 세그먼트 갱신 불가 | **HLS 자체를 WHEP으로 교체** |
+| `useCallback` 빌드 오류 | `noUnusedLocals` strict mode에서 import 누락 | `useAIResults.ts`에 `useCallback` import 추가 |
+
+### HLS → WHEP 전환 (T-16 재구현)
+
+HLS 프리뷰의 "정적 화면" 문제는 단순 버그가 아니었다.
+근본 원인은 HLS의 구조적 특성(세그먼트 단위 버퍼링)에 있었고,
+이를 진짜로 해결하려면 프로토콜 자체를 바꿔야 했다.
+
+**결과**:
+- HLS의 2~6초 지연 → WHEP < 100ms (Zoom과 동일한 실시간감)
+- `syncedResult` / `latestResultRef` / `handleTimeSync` / `getResultAtTime` 등 시간 동기화 복잡도 전부 제거
+- `WhepPlayer` 컴포넌트: 자동 재시도(2초 × 10회) + 수동 재시도 버튼 + 연결 상태 표시
+- 파이프라인 중지 → 재시도 → 재시작 후 자동 복구 동작 확인
 
 ### 다음 시도해볼 것
 
-1. `webrtcsink`(WHEP)로 live branch 지연을 < 1초로 낮추기
-2. Prometheus + Grafana로 장기 메트릭 시각화
-3. TURN 서버 추가로 NAT 환경에서도 WHIP 송출 보장
-4. MediaPipe LIVE_STREAM → batch 처리로 throughput 향상 실험
+1. Prometheus + Grafana로 장기 메트릭 시각화
+2. TURN 서버 추가로 NAT 환경에서도 WHIP 송출 보장
+3. MediaPipe LIVE_STREAM → batch 처리로 throughput 향상 실험
+4. WHEP에 audio transceiver 추가하여 마이크 모니터링

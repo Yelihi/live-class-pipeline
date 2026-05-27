@@ -29,6 +29,19 @@ webrtcAddress: :8889
 
 # 경로 설정
 paths:
-  # /room1: 누구나 publish·read 허용
   room1:
+    source: publisher
+  room2:
+    source: publisher
+  room3:
+    source: publisher
+  room4:
+    source: publisher
+  room5:
+    source: publisher
+  room6:
+    source: publisher
+  room7:
+    source: publisher
+  room8:
     source: publisher
