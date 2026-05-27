@@ -1,0 +1,8 @@
+# OpenCV 파이프라인으로 api 서비스 오버라이드
+# 사용: docker compose -f infra/compose/docker-compose.local.yml \
+#                      -f infra/compose/docker-compose.opencv.yml up api -d
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/opencv.Dockerfile
