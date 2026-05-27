@@ -1,18 +1,21 @@
 export interface PipelineStatus {
   state: "playing" | "paused" | "stopped" | "null";
+  room_count?: number;
 }
 
 export interface BranchMetrics {
   fps: number;
   frame_count: number;
-  dropped_frames: number;
+}
+
+export interface AggregateBranchMetrics {
+  avg_fps: number;
+  total_frames: number;
 }
 
 export interface MetricsSnapshot {
-  live: BranchMetrics;
-  record: BranchMetrics;
-  ai: BranchMetrics;
-  preview: BranchMetrics;
+  rooms: Record<string, Record<string, BranchMetrics>>;
+  aggregate: Record<string, AggregateBranchMetrics>;
 }
 
 export interface SSEMetricsEvent {
@@ -24,7 +27,7 @@ export interface SSEMetricsEvent {
 export interface SSEPipelineEvent {
   type: "pipeline";
   state: "started" | "stopped";
-  input?: string;
+  rooms?: string[];
 }
 
 export interface AIResult {

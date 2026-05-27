@@ -40,7 +40,7 @@ export function DashboardPage() {
             <BranchStatusCard
               key={branch}
               branch={branch}
-              metrics={metrics?.[branch]}
+              metrics={metrics?.aggregate?.[branch]}
             />
           ))}
         </div>

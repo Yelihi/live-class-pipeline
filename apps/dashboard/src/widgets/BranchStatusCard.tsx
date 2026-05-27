@@ -1,4 +1,4 @@
-import type { BranchMetrics } from "../shared/types/pipeline";
+import type { AggregateBranchMetrics } from "../shared/types/pipeline";
 
 type Branch = "live" | "record" | "ai" | "preview";
 
@@ -11,7 +11,7 @@ const BRANCH_LABELS: Record<Branch, string> = {
 
 interface Props {
   branch: Branch;
-  metrics?: BranchMetrics;
+  metrics?: AggregateBranchMetrics;
 }
 
 export function BranchStatusCard({ branch, metrics }: Props) {
@@ -20,10 +20,10 @@ export function BranchStatusCard({ branch, metrics }: Props) {
       <h3 className="text-white font-medium">{BRANCH_LABELS[branch]}</h3>
       <div className="mt-2 space-y-1">
         <p className="text-2xl font-bold text-green-400">
-          {metrics ? `${metrics.fps.toFixed(1)} fps` : "—"}
+          {metrics ? `${metrics.avg_fps.toFixed(1)} fps` : "—"}
         </p>
         <p className="text-gray-400 text-xs">
-          총 프레임: {metrics?.frame_count ?? 0}
+          총 프레임: {metrics?.total_frames ?? 0}
         </p>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import gi
 
@@ -10,7 +10,6 @@ from gi.repository import Gst  # noqa: E402
 @dataclass
 class BranchMetrics:
     fps: float = 0.0
-    dropped_frames: int = 0
     last_pts_ns: int = 0
     frame_count: int = 0
 
@@ -18,35 +17,31 @@ class BranchMetrics:
 class MetricsCollector:
     def __init__(self):
         self._lock = threading.Lock()
-        self.branches: dict[str, BranchMetrics] = {
-            "live": BranchMetrics(),
-            "record": BranchMetrics(),
-            "ai": BranchMetrics(),
-            "preview": BranchMetrics(),
-        }
+        self._rooms: dict[str, dict[str, BranchMetrics]] = {}
 
     def reset(self):
         with self._lock:
-            for m in self.branches.values():
-                m.fps = 0.0
-                m.dropped_frames = 0
-                m.last_pts_ns = 0
-                m.frame_count = 0
+            self._rooms.clear()
 
-    def attach_probe(self, pipeline: Gst.Pipeline, branch_name: str, element_name: str):
+    def remove_room(self, room: str):
+        with self._lock:
+            self._rooms.pop(room, None)
+
+    def attach_probe(self, room: str, pipeline: Gst.Pipeline, branch_name: str, element_name: str):
         element = pipeline.get_by_name(element_name)
         if element is None:
             return
         pad = element.get_static_pad("sink")
         if pad is None:
             return
-        pad.add_probe(Gst.PadProbeType.BUFFER, self._make_callback(branch_name))
+        pad.add_probe(Gst.PadProbeType.BUFFER, self._make_callback(room, branch_name))
 
-    def _make_callback(self, branch_name: str):
+    def _make_callback(self, room: str, branch_name: str):
         def callback(pad, info):
             buf = info.get_buffer()
             with self._lock:
-                m = self.branches[branch_name]
+                room_data = self._rooms.setdefault(room, {})
+                m = room_data.setdefault(branch_name, BranchMetrics())
                 if m.last_pts_ns > 0 and buf.pts > m.last_pts_ns:
                     delta_ns = buf.pts - m.last_pts_ns
                     m.fps = round(1e9 / delta_ns, 1)
@@ -58,14 +53,25 @@ class MetricsCollector:
 
     def get_snapshot(self) -> dict:
         with self._lock:
-            return {
-                name: {
-                    "fps": m.fps,
-                    "frame_count": m.frame_count,
-                    "dropped_frames": m.dropped_frames,
+            rooms = {
+                room: {
+                    branch: {"fps": m.fps, "frame_count": m.frame_count}
+                    for branch, m in branches.items()
                 }
-                for name, m in self.branches.items()
+                for room, branches in self._rooms.items()
             }
+
+        aggregate: dict[str, dict] = {}
+        for branch in ["live", "record", "ai", "preview"]:
+            fps_list = [rooms[r][branch]["fps"] for r in rooms if branch in rooms[r]]
+            frames_list = [rooms[r][branch]["frame_count"] for r in rooms if branch in rooms[r]]
+            if fps_list:
+                aggregate[branch] = {
+                    "avg_fps": round(sum(fps_list) / len(fps_list), 1),
+                    "total_frames": sum(frames_list),
+                }
+
+        return {"rooms": rooms, "aggregate": aggregate}
 
 
 # 싱글톤 인스턴스

@@ -15,13 +15,14 @@ export function useFpsHistory(metrics: MetricsSnapshot | null) {
   const [history, setHistory] = useState<FpsDataPoint[]>([]);
 
   useEffect(() => {
-    if (!metrics) return;
+    if (!metrics?.aggregate) return;
+    const agg = metrics.aggregate;
     const point: FpsDataPoint = {
       time: new Date().toLocaleTimeString(),
-      live: metrics.live.fps,
-      record: metrics.record.fps,
-      ai: metrics.ai.fps,
-      preview: metrics.preview.fps,
+      live: agg.live?.avg_fps ?? 0,
+      record: agg.record?.avg_fps ?? 0,
+      ai: agg.ai?.avg_fps ?? 0,
+      preview: agg.preview?.avg_fps ?? 0,
     };
     setHistory((prev) => [...prev, point].slice(-MAX_POINTS));
   }, [metrics]);
