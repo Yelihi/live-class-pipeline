@@ -253,12 +253,16 @@ bash scripts/gen-streams.sh 4 rtsp://localhost:8554
 
 ### Step 3. GStreamer 파이프라인 시작
 
+> **주의**: `/pipeline/start`는 이미 실행 중인 파이프라인이 있으면 `{"error": "이미 실행 중"}`을 반환합니다.
+> 새로운 룸 구성으로 시작하려면 반드시 `/pipeline/stop`으로 먼저 중지한 뒤 다시 시작하세요.
+
 ```bash
 # 터미널 B: 단일 룸
 curl -s -X POST "http://localhost:8000/pipeline/start?rooms=room1" | python3 -m json.tool
 # → {"state": "started", "rooms": ["room1"]}
 
-# 4개 룸 동시
+# 4개 룸으로 전환 시: 기존 파이프라인 중지 후 재시작
+curl -s -X POST http://localhost:8000/pipeline/stop
 curl -s -X POST "http://localhost:8000/pipeline/start?rooms=room1,room2,room3,room4" | python3 -m json.tool
 # → {"state": "started", "rooms": ["room1", "room2", "room3", "room4"]}
 ```
