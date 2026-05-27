@@ -143,11 +143,11 @@ graph TD
 
 | 구현 | N=1 avg | N=1 지터(σ) | N=4 avg | N=4 지터(σ) |
 |------|---------|------------|---------|------------|
-| **GStreamer** | **30.0fps** | **σ=0.00** | **30.0fps** | **σ=0.00** |
-| OpenCV Python | 31.1fps | σ=3.82 (max 48.7) | 30.5fps | σ=2.46 (max 43.7) |
+| **GStreamer** | **30.0fps** | **σ=0.00** | **30.3fps** | **σ=0.36** (min 30.0 / max 31.1) |
+| OpenCV Python | 31.1fps | σ=3.82 (max 48.7) | **5.9fps** | σ=4.80 (min 1.1 / max 21.5) |
 
-**핵심 차이점**: avg fps가 비슷해도 OpenCV는 Python GIL burst로 인해 순간 최대 48.7fps가 발생합니다.
-GStreamer는 C 레벨 PTS 기반으로 완벽하게 일정한 타이밍(σ=0)을 유지합니다.
+**핵심 차이점**: N=4에서 GStreamer는 30.3fps를 안정적으로 유지한 반면, OpenCV는 목표의 20% 수준인 5.9fps로 붕괴됩니다.
+원인은 `cv2.VideoCapture` RTSP 수신 한계 + 20개 Python 스레드의 GIL 경합 + `frame.copy() × 16회/프레임` + ffmpeg 서브프로세스 4개 동시 IPC 오버헤드가 복합적으로 작용한 결과입니다.
 
 ### 4-C. Preview 지연 방식 비교
 
@@ -429,21 +429,21 @@ for path in sys.argv[1:]:
 EOF
 ```
 
-예상 출력:
+실제 측정 출력:
 ```
-=== my_gst_n4 (n=20) ===
-  live_fps      : avg=30.00  σ=0.00  min=30.0  max=30.0  ← 완벽하게 일정
+=== my_gst_n4 (n=30) ===
+  live_fps      : avg=30.26  σ=0.36  min=30.0  max=31.1  ← 4룸 동시, 목표 달성
   ai_fps        : avg=5.00   σ=0.00  min=5.0   max=5.0
 
 === my_opencv_n4 (n=30) ===
-  live_fps      : avg=30.49  σ=2.46  min=30.0  max=43.7  ← Python GIL burst
-  ai_fps        : avg=5.00   σ=0.00  min=5.0   max=5.0
+  live_fps      : avg=5.94   σ=4.80  min=1.1   max=21.5  ← 목표의 20%로 붕괴
+  ai_fps        : avg=6.21   σ=5.03  min=1.1   max=20.1
 ```
 
 **수치 해석**:
-- GStreamer σ=0: C 레벨 PTS 기반 측정이므로 타이밍이 항상 일정
-- OpenCV max=43.7fps: 실제 소스(30fps)를 초과하는 값이 발생 → Python 스레드가 GIL을 반납받는 순간 큐에 쌓인 프레임을 burst로 소비하는 현상
-- 이 지터는 HLS 세그먼트 경계 불규칙, MKV 가변 프레임레이트, AI 타임스탬프 왜곡으로 이어짐
+- GStreamer σ=0.36: C 레벨 PTS 기반 측정, 4룸 동시에도 거의 제로 지터
+- OpenCV live 5.9fps: `cv2.VideoCapture` RTSP 수신 한계 + 20개 Python 스레드 GIL 경합 + `frame.copy()×16` + ffmpeg IPC 4개가 복합 작용
+- OpenCV ai_fps ≈ live_fps: 캡처 자체가 ~6fps로 제한되어 AI_INTERVAL(0.2s) 체크가 거의 항상 통과 — 5fps 제어가 무의미해진 상태
 
 ### Step 4. GStreamer로 원복
 
