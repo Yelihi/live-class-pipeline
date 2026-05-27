@@ -88,37 +88,43 @@
 
 | 스트림 수 | GStreamer avg | GStreamer 지터 | OpenCV avg | OpenCV 지터 |
 |---------|-------------|--------------|-----------|------------|
-| N=1     | **30.0** fps | 0 (min=max=30.0) | **31.1** fps | ±6 (min 30.0 / max 48.7) |
-| N=4     | **30.0** fps | 0 (min=max=30.0) | **30.5** fps | ±7 (min 30.0 / max 43.7) |
+| N=1     | **30.0** fps | σ=0 (min=max=30.0) | **31.1** fps | σ=6 (min 30.0 / max 48.7) |
+| N=4     | **30.3** fps | σ=0.36 (min 30.0 / max 31.1) | **5.9** fps | σ=4.80 (min 1.1 / max 21.5) |
 
-> 샘플 수: GStreamer N=1 30개, N=4 20개 / OpenCV N=1 44개, N=4 30개
+> 샘플 수: GStreamer N=1 30개, N=4 30개 / OpenCV N=1 44개, N=4 30개
+>
+> 측정 시점: N=4 재측정 2026-05-27
 
-### ai/preview branch avg_fps (목표: 5fps)
+### ai branch avg_fps (목표: 5fps)
 
 | 스트림 수 | GStreamer | OpenCV |
 |---------|----------|--------|
 | N=1     | **5.0** fps (σ=0) | **4.9** fps (min 3.3 / max 5.0) |
-| N=4     | **5.0** fps (σ=0) | **5.0** fps (σ=0) |
+| N=4     | **5.0** fps (σ=0) | **6.2** fps (σ=5.03 / min 1.1 / max 20.1) |
 
-### 핵심 발견: 처리량 vs 지터
+> OpenCV N=4의 ai_fps가 목표(5fps)를 소폭 초과하고 live_fps와 유사한 것은
+> 캡처 자체가 ~6fps로 제한되어 AI_INTERVAL(0.2s) 체크가 거의 항상 통과되기 때문이다.
 
-M1 8코어 환경에서 N=4 기준 avg_fps는 두 버전 모두 목표값(30fps)을 만족했다.
-그러나 두 구현의 **결정론적 특성**에서 명확한 차이가 나타났다.
+### 핵심 발견: N=4에서의 실제 처리량 격차
+
+N=4 재측정 결과, 두 버전의 차이는 "지터" 수준이 아니라 **처리량 자체의 붕괴**였다.
 
 | 특성 | GStreamer | OpenCV + Python threads |
 |------|----------|------------------------|
-| fps 안정성 | **σ=0** — C 레벨 PTS 기반 측정, 지터 없음 | **σ>0** — Python queue burst로 순간 max ≈ 48fps |
+| live fps (N=4) | **30.3 fps** (목표 달성) | **5.9 fps** (목표의 20%) |
+| fps 안정성 | σ=0.36 — C 레벨 PTS 기반 | σ=4.80 — 극심한 불안정 |
 | 프레임 전달 방식 | zero-copy (참조 카운팅) | `frame.copy()` × 4 × N |
 | 5fps 제어 | `videorate` C 레벨 | `time.monotonic()` 수동 샘플링 |
 | AI 격리 | `leaky=downstream` C 큐 | Python `Queue(maxsize=5)` + GIL |
 | RTSP 재연결 | `rtspsrc` 자동 처리 | 수동 재연결 루프 (2초 sleep) |
 
-**GIL 영향 관찰**: OpenCV 버전에서 순간 max fps가 실제 소스 fps(30fps)를 크게 초과(48.7fps)하는 현상은 Python 스레드 스케줄러가 GIL을 반납받는 시점에 프레임을 burst 처리하기 때문이다. GStreamer에서는 이 현상이 전혀 나타나지 않는다.
+**OpenCV N=4 성능 붕괴 원인 (복합)**:
+- `cv2.VideoCapture` RTSP 수신 자체가 불안정 (단일 스트림도 제한적)
+- 4룸 × 5스레드 = 20개 Python 스레드의 GIL 경합
+- `frame.copy() × 4 × 4 = 16회/프레임`의 메모리 복사 누적
+- 룸당 ffmpeg 서브프로세스 4개 동시 실행으로 인한 IPC 오버헤드
 
-**확장성 한계 예측**: M1 8코어에서 N=4는 두 버전 모두 처리 가능했지만,
-N이 증가하여 `frame.copy() × 4 × N` 메모리 복사량이 L2 캐시를 초과하거나
-GIL 경쟁이 intensify되면 OpenCV 버전의 avg_fps 하락이 예측된다.
-GStreamer는 각 파이프라인이 독립 GLib 스레드로 동작하므로 N에 대해 선형적으로 확장된다.
+**GStreamer 안정성의 근거**: 4개 파이프라인이 각각 독립 GLib 스레드(C 레벨)에서 실행되며 GIL이 없고, 버퍼는 참조 카운팅 zero-copy로 전달된다. N이 늘어도 각 파이프라인은 서로 영향을 주지 않는다.
 
 ---
 
